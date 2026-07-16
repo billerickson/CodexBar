@@ -1,0 +1,48 @@
+name: DeepInfra test build
+
+on:
+  push:
+    branches: [codex/deepinfra-test-build]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+
+      - name: Select Xcode 26.3 or 26.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          for candidate in /Applications/Xcode_26.3.app /Applications/Xcode_26.2.app; do
+            if [[ -d "$candidate" ]]; then
+              sudo xcode-select -s "${candidate}/Contents/Developer"
+              break
+            fi
+          done
+          [[ "$(xcodebuild -version)" == Xcode\ 26.* ]]
+          xcodebuild -version
+
+      - name: Run DeepInfra tests
+        run: swift test --filter DeepInfra
+
+      - name: Package ad-hoc universal debug app
+        env:
+          ARCHES: arm64 x86_64
+          CODEXBAR_SIGNING: adhoc
+        run: ./Scripts/package_app.sh debug
+
+      - name: Create test archive
+        run: ditto -c -k --sequesterRsrc --keepParent CodexBar.app CodexBar-DeepInfra-test.zip
+
+      - name: Upload test app
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: CodexBar-DeepInfra-test
+          path: CodexBar-DeepInfra-test.zip
+          if-no-files-found: error
+          retention-days: 7
